@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulación de Producción 3D - Tiendas Independientes</title>
+  <style>
+    /* --- ESTILOS CSS --- */
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background-color: #111416;
+    }
+
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    .interface {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      text-align: center;
+      background: rgba(15, 15, 15, 0.9);
+      padding: 15px 30px;
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 15px 35px rgba(0,0,0,0.7);
+      width: 85%;
+      max-width: 500px;
+    }
+
+    h1 {
+      margin: 0 0 5px 0;
+      font-size: 1.25rem;
+      color: #ff4757;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    p {
+      margin: 0 0 15px 0;
+      font-size: 0.9rem;
+      color: #ccc;
+      line-height: 1.4;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .controls button {
+      background: #2f3542;
+      border: 1px solid rgba(255,255,255,0.1);
+      color: white;
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 0.85rem;
+      transition: all 0.3s ease;
+      flex: 1;
+    }
+
+    .controls button.active {
+      background: #ff4757;
+      border-color: #ff4757;
+      box-shadow: 0 0 10px rgba(255, 71, 87, 0.4);
+    }
+
+    .controls button:hover {
+      background: #ff6b81;
+      color: white;
+    }
+    
+    .hint {
+      font-size: 0.75rem;
+      color: #747d8c;
+      margin-top: 8px;
+    }
+  </style>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+
+  <div class="interface">
+    <h1 id="step-title">1. EN LA COCINA</h1>
+    <p id="step-desc">El chef está preparando e integrando de forma activa el producto base dentro de su quiosco.</p>
+    <div class="controls">
+      <button id="btn-0" class="active" onclick="selectActivity(0)">1. Cocina</button>
+      <button id="btn-1" onclick="selectActivity(1)">2. Empaque</button>
+      <button id="btn-2" onclick="selectActivity(2)">3. Venta</button>
+    </div>
+    <div class="hint">🔄 Arrastra para girar 360° | Usa los botones para cambiar de tiendita</div>
+  </div>
+
+  <script>
+    // --- MOTOR PRINCIPAL THREE.JS ---
+    
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111416); 
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    container.appendChild(renderer.domElement);
+
+    // Controles orbitales 360
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 - 0.05; // Evita atravesar el suelo
+
+    // Iluminación ambiental y dirigida
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xfff1e0, 0.9); 
+    dirLight.position.set(10, 25, 15);
+    scene.add(dirLight);
+
+    // --- MATERIALES CORREGIDOS ---
+    const matChef = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const matSkin = new THREE.MeshLambertMaterial({ color: 0xffdbac });
+    const matTable = new THREE.MeshLambertMaterial({ color: 0x8b5a2b }); 
+    const matApron = new THREE.MeshLambertMaterial({ color: 0xd63031 }); 
+    const matCap = new THREE.MeshLambertMaterial({ color: 0x2e86de });   
+    const matBox = new THREE.MeshLambertMaterial({ color: 0xeccc68 });   
+    const matFace = new THREE.MeshBasicMaterial({ color: 0x2c3e50 });   
+    
+    // Materiales para la estructura de las tiendas
+    const matWall = new THREE.MeshLambertMaterial({ color: 0x2c3e50 });
+    const matFloor = new THREE.MeshLambertMaterial({ color: 0x34495e });
+    const matRoof = new THREE.MeshLambertMaterial({ color: 0xff4757 }); // Error hexadecimal solucionado aquí
+    const matPole = new THREE.MeshLambertMaterial({ color: 0xbdc3c7 });
+
+    // --- FUNCIÓN PARA CONSTRUIR UNA TIENDITA (QUIOSCO) ---
+    function construirTiendita() {
+      const tienda = new THREE.Group();
+
+      // Suelo de la tienda
+      const suelo = new THREE.Mesh(new THREE.BoxGeometry(5, 0.1, 5), matFloor);
+      suelo.position.y = -0.05;
+      tienda.add(suelo);
+
+      // Pared trasera
+      const pared = new THREE.Mesh(new THREE.BoxGeometry(5, 4, 0.2), matWall);
+      pared.position.set(0, 2, -2.4);
+      tienda.add(pared);
+
+      // Postes del techo (4 pilares)
+      const posicionesPostes = [
+        [-2.4, 2.4], [2.4, 2.4], [-2.4, -2.4], [2.4, -2.4]
+      ];
+      posicionesPostes.forEach(pos => {
+        const poste = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 4), matPole);
+        poste.position.set(pos[0], 2, pos[1]);
+        tienda.add(poste);
+      });
+
+      // Techo flotante
+      const techo = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.4, 5.4), matRoof);
+      techo.position.y = 4.1;
+      tienda.add(techo);
+
+      return tienda;
+    }
+
+    // --- FUNCIÓN PARA CREAR PERSONAJES ---
+    function crearHumano(tipo) {
+      const personaje = new THREE.Group();
+
+      let colorTorso = 0x341f97; 
+      if (tipo === 'chef') colorTorso = 0xffffff;
+      if (tipo === 'cliente') colorTorso = 0x10ac84; 
+
+      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 1.4), new THREE.MeshLambertMaterial({color: colorTorso}));
+      torso.position.y = 1.6;
+      personaje.add(torso);
+
+      if (tipo === 'chef' || tipo === 'empaque') {
+        const delantal = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.47, 1.0, 16, 1, false, 0, Math.PI), matApron);
+        delantal.position.set(0, 1.5, 0.02);
+        personaje.add(delantal);
+      }
+
+      const cabeza = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), matSkin);
+      cabeza.position.y = 2.6;
+      personaje.add(cabeza);
+
+      const ojosGroup = new THREE.Group();
+      const ojoIzq = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), matFace);
+      ojoIzq.position.set(-0.12, 0.1, 0.35);
+      const ojoDer = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), matFace);
+      ojoDer.position.set(0.12, 0.1, 0.35);
+      ojosGroup.position.y = 2.6;
+      ojosGroup.add(ojoIzq, ojoDer);
+      personaje.add(ojosGroup);
+
+      if (tipo === 'chef') {
+        const gorroBase = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.25), matChef);
+        gorroBase.position.y = 3.0;
+        const gorroTop = new THREE.Mesh(new THREE.SphereGeometry(0.48, 16, 16), matChef);
+        gorroTop.position.y = 3.25;
+        personaje.add(gorroBase, gorroTop);
+      } else if (tipo === 'repartidor') {
+        const gorra = new THREE.Mesh(new THREE.CylinderGeometry(0.41, 0.41, 0.15), matCap);
+        gorra.position.y = 2.95;
+        const visera = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.04, 0.25), matCap);
+        visera.position.set(0, 2.9, 0.35);
+        personaje.add(gorra, visera);
+      }
+
+      const armGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.7);
+      armGeo.translate(0, -0.35, 0); 
+
+      const brazoIzq = new THREE.Mesh(armGeo, matSkin);
+      brazoIzq.position.set(-0.5, 2.2, 0);
+      
+      const brazoDer = new THREE.Mesh(armGeo, matSkin);
+      brazoDer.position.set(0.5, 2.2, 0);
+
+      personaje.add(brazoIzq, brazoDer);
+      personaje.userData = { brazoIzq, brazoDer, torso, ojosGroup };
+      return personaje;
+    }
+
+    // --- INSTANCIACIÓN DE LAS TIENDAS ---
+    
+    // 1. TIENDA COCINA
+    const tiendaCocina = construirTiendita();
+    const mesa1 = new THREE.Mesh(new THREE.BoxGeometry(3.5, 1.6, 1.8), matTable);
+    mesa1.position.set(0, 0.8, 0);
+    const olla = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.7), new THREE.MeshStandardMaterial({color: 0xbdc3c7}));
+    olla.position.set(0, 1.8, 0.1);
+    const chef = crearHumano('chef');
+    chef.position.set(0, 0, -0.7);
+    tiendaCocina.add(mesa1, olla, chef);
+    scene.add(tiendaCocina);
+
+    // 2. TIENDA EMPAQUE
+    const tiendaEmpaque = construirTiendita();
+    const mesa2 = new THREE.Mesh(new THREE.BoxGeometry(3.5, 1.6, 1.8), matTable);
+    mesa2.position.set(0, 0.8, 0);
+    const caja = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.7, 0.9), matBox);
+    caja.position.set(0, 1.8, 0.1);
+    const operario = crearHumano('empaque');
+    operario.position.set(0, 0, -0.7);
+    tiendaEmpaque.add(mesa2, caja, operario);
+    scene.add(tiendaEmpaque);
+
+    // 3. TIENDA VENTA
+    const tiendaVenta = construirTiendita();
+    const mesa3 = new THREE.Mesh(new THREE.BoxGeometry(3.5, 1.6, 1.8), matTable);
+    mesa3.position.set(0, 0.8, 0);
+    const repartidor = crearHumano('repartidor');
+    repartidor.position.set(0, 0, -0.7);
+    const cliente = crearHumano('cliente');
+    cliente.position.set(0, 0, 0.7);
+    cliente.rotation.y = Math.PI; 
+    const cajaEntrega = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.8), matBox);
+    cajaEntrega.position.set(0, 1.7, 0.1);
+    tiendaVenta.add(mesa3, repartidor, cliente, cajaEntrega);
+    scene.add(tiendaVenta);
+
+    const modulos = [tiendaCocina, tiendaEmpaque, tiendaVenta];
+
+    // --- CONTROL DE ACTIVIDADES ---
+    let actividadActual = 0;
+    
+    camera.position.set(0, 4.5, 7.5);
+    controls.target.set(0, 1.8, 0);
+
+    const infoPasos = [
+      { title: "1. EN LA COCINA", desc: "El chef está preparando e integrando de forma activa el producto base dentro de su quiosco." },
+      { title: "2. EMPAQUETANDO", desc: "El operario recibe el producto y ejecuta el proceso de sellado en caja." },
+      { title: "3. COMPRA Y VENTA", desc: "¡Fase final! El repartidor despacha la caja directo al cliente en la ventanilla de la tienda." }
+    ];
+
+    window.selectActivity = function(paso) {
+      actividadActual = paso;
+      
+      for (let i = 0; i < 3; i++) {
+        document.getElementById(`btn-${i}`).classList.remove('active');
+      }
+      document.getElementById(`btn-${paso}`).classList.add('active');
+      
+      document.getElementById('step-title').innerText = infoPasos[paso].title;
+      document.getElementById('step-desc').innerText = infoPasos[paso].desc;
+      
+      controls.target.set(0, 1.8, 0);
+    }
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const time = clock.getElapsedTime();
+
+      // Muestra únicamente la tienda del procedimiento activo
+      for (let i = 0; i < modulos.length; i++) {
+        if (i === actividadActual) {
+          modulos[i].visible = true;
+        } else {
+          modulos[i].visible = false;
+        }
+      }
+
+      // Animaciones de personajes según el módulo visible
+      if (actividadActual === 0) {
+        chef.userData.brazoIzq.rotation.x = -Math.PI/3 + Math.sin(time * 8) * 0.3;
+        chef.userData.brazoDer.rotation.x = -Math.PI/3 + Math.cos(time * 8) * 0.3;
+        olla.rotation.y += 0.01;
+      }
+      else if (actividadActual === 1) {
+        operario.userData.brazoIzq.rotation.x = -Math.PI/4 + Math.sin(time * 4) * 0.4;
+        operario.userData.brazoDer.rotation.x = -Math.PI/4 + Math.sin(time * 4) * 0.4;
+        caja.position.y = 1.75 + Math.abs(Math.sin(time * 4)) * 0.15; 
+      }
+      else if (actividadActual === 2) {
+        repartidor.userData.brazoDer.rotation.x = -Math.PI/2.5 + Math.sin(time * 3) * 0.2;
+        repartidor.userData.brazoIzq.rotation.x = -Math.PI/2.5 + Math.sin(time * 3) * 0.2;
+        
+        cliente.userData.brazoDer.rotation.x = -Math.PI/3 + Math.cos(time * 3) * 0.15;
+        cliente.userData.brazoIzq.rotation.x = -Math.PI/3 + Math.sin(time * 3) * 0.15;
+
+        cajaEntrega.position.z = 0.1 + Math.sin(time * 3) * 0.3;
+        cajaEntrega.rotation.y = time * 0.3; 
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+  </script>
+</body>
+</html>
